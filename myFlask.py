@@ -168,3 +168,4 @@ def clear():
 @app.route('/no_consent')
 def no_consent():
     return render_template("index2.html")
+

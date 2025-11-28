@@ -162,7 +162,7 @@ button:active {
 </head>
 <body>
   <div class="chat-container">
-    <header>Health Care Chat Bot | <br> Hello: {{username}} | <br> Email: <div id="email_div">{{email}}</div>  | </header>
+    <header>Health Care Chat Bot | <br> Hello: {{username}} | <br> <div id="email_div">Email: {{email}}</div>  | </header>
 
     <div class="chat-box" id="chat-history-box">
       {% if not messages %}
@@ -213,15 +213,18 @@ button:active {
 
 <script>
   function get_chats(){
+    user_msg = document.getElementsByName("user_input")[0].value;  
+    if (!user_msg) return;
+    
     document.getElementById("chat_send_btn").style.display = "none";
     document.getElementById("btn_loader").style.display = "block";
     email = document.getElementById("email_div").innerHTML;
-    user_msg = document.getElementsByName("user_input")[0].value;
+    
     fetch(`/fetch_msg_from_mongoDB/${email}/${user_msg}`)
     .then(res => res.text() )
     .then(HTML => {
       document.getElementById("chat-history-box").innerHTML = HTML;
-      document.getElementsByName("user_input")[0].value = " ";
+      document.getElementsByName("user_input")[0].value = "";
     document.getElementById("chat_send_btn").style.display = "block";
     document.getElementById("btn_loader").style.display = "none";
     scrollToBottom();
