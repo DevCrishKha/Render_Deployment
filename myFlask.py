@@ -55,12 +55,14 @@ def Index():
 @app.route('/app', methods=['POST', 'GET'])
 def chat():
     if "user" not in session:
-        return redirect('/login')
+        return redirect('/')
     
     return render_template("index.html", messages=session.get("chats"), username=session["user"]["userinfo"]["name"], email=session["user"]["userinfo"]["email"])
 
 @app.route('/fetch_msg_from_mongoDB/<email>/<user_input>')
 def fetch_msg(email, user_input):
+    if "user" not in session:
+        return redirect('/')
     Msg_List = collection.find_one({"email":session["user"]["userinfo"]["email"]})
     if Msg_List:
         myList = Msg_List["Msg_list"] #If the document is there take the chat-list from there || If not then create it from start
