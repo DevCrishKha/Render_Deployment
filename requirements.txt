@@ -1,0 +1,9 @@
+flask
+authlib
+google-generativeai
+markdown
+requests
+pymongo
+flask-Session
+gunicorn
+python-dotenv

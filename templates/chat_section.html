@@ -1,0 +1,7 @@
+
+    {% for msg in messages[1:] %}
+      <div class="message {{ msg['role'] }}">
+        {# This is the correct way to access the text from your Python structure #}
+        {{ msg['parts'][0]['text'] | safe}}
+      </div>
+    {% endfor %}

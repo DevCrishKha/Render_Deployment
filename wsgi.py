@@ -1,0 +1,1 @@
+from myFlask import app
