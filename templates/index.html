@@ -162,8 +162,8 @@ button:active {
 </head>
 <body>
   <div class="chat-container">
-    <header>Health Care Chat Bot | <br> Hello: {{username}} | <br> <div id="email_div">Email: {{email}}</div>  | </header>
-
+    <header>Health Care Chat Bot | <br> Hello: {{username}} | <br> Email: {{email}}  | </header>
+    <div id="email_div" style="display: none;">{{email}}</div>
     <div class="chat-box" id="chat-history-box">
       {% if not messages %}
       <div class="message model">
@@ -219,7 +219,6 @@ button:active {
     document.getElementById("chat_send_btn").style.display = "none";
     document.getElementById("btn_loader").style.display = "block";
     email = document.getElementById("email_div").innerHTML;
-    
     fetch(`/fetch_msg_from_mongoDB/${email}/${user_msg}`)
     .then(res => res.text() )
     .then(HTML => {
