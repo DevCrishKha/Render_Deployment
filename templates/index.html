@@ -84,6 +84,7 @@
         color: #000;
         /* Sharp corner top-right, smooth everywhere else */
         border-radius: 10px 0px 10px 10px;
+        
     }
 
     /* Bot (Received) Message Bubble */
@@ -177,7 +178,7 @@ button:active {
         {% for msg in messages[1:] %}
           <div class="message {{ msg['role'] }}">
             {# This is the correct way to access the text from your Python structure #}
-            {{ msg['parts'][0]['text'] | safe}}
+            {{ msg['parts'][0]['text'] | replace(' ', '&nbsp;') | safe }}
           </div>
         {% endfor %}
       {% endif %}
