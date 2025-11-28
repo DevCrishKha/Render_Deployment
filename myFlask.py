@@ -157,6 +157,8 @@ def clear():
         return redirect('/login')
 
     collection.delete_one({"email":session["user"]["userinfo"]["email"]})
+    if "chats" in session:
+        session.pop("chats")
     return redirect('/app')
 
 @app.route('/no_consent')

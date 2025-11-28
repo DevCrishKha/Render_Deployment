@@ -165,25 +165,33 @@ button:active {
     <header>Health Care Chat Bot | <br> Hello: {{username}} | <br> Email: <div id="email_div">{{email}}</div>  | </header>
 
     <div class="chat-box" id="chat-history-box">
-      {% if messages %}
-      {% if messages|length == 2 %}
-      {% for msg in messages[1:] %}
-      <div class="message {{ msg['role'] }}">
-        {# This is the correct way to access the text from your Python structure #}
-        {{ msg['parts'][0]['text'] | safe}}
+      {% if not messages %}
+      <div class="message model">
+        Hi there! I'm ready to help you with general health and wellness information. What's on your mind today?
       </div>
-    {% endfor %}
+      {% endif %}
+
+  {% if messages %}
+
+      {% if messages|length == 2 %}
+        {% for msg in messages[1:] %}
+          <div class="message {{ msg['role'] }}">
+            {# This is the correct way to access the text from your Python structure #}
+            {{ msg['parts'][0]['text'] | safe}}
+          </div>
+        {% endfor %}
       {% endif %}
 
       {% if messages|length > 2 %}
-      {% for msg in messages[1:] %}
-      <div class="message {{ msg['role'] }}">
-        {# This is the correct way to access the text from your Python structure #}
-        {{ msg['parts'][0]['text'] | safe}}
-      </div>
-    {% endfor %}
+        {% for msg in messages[1:] %}
+          <div class="message {{ msg['role'] }}">
+            {# This is the correct way to access the text from your Python structure #}
+            {{ msg['parts'][0]['text'] | safe}}
+          </div>
+        {% endfor %}
       {% endif %}
-      {% endif %}
+
+  {% endif %}
 </div>
 
     <form>
