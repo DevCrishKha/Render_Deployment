@@ -141,6 +141,10 @@ def callback():
     else:
         collection2.delete_one({"email":email})
         collection2.insert_one({"email":email , f"{email}":token})
+    Msg_List = collection.find_one({"email":email}) #deleting session 'chats' as we logout and adding as we log in
+    if Msg_List:
+        myList = Msg_List["Msg_list"]
+        session("chats") = myList
     return redirect('/app')
 
 @app.route('/logout')
