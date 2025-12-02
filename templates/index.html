@@ -220,7 +220,7 @@ button:active {
     document.getElementById("chat_send_btn").style.display = "none";
     document.getElementById("btn_loader").style.display = "block";
     email = document.getElementById("email_div").innerHTML;
-    fetch(`/fetch_msg_from_mongoDB/${email}/${user_msg}`)
+    fetch(`/fetch_msg_from_mongoDB/${user_msg}`)
     .then(res => res.text() )
     .then(HTML => {
       document.getElementById("chat-history-box").innerHTML = HTML;

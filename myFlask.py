@@ -59,8 +59,8 @@ def chat():
     
     return render_template("index.html", messages=session.get("chats"), username=session["user"]["userinfo"]["name"], email=session["user"]["userinfo"]["email"])
 
-@app.route('/fetch_msg_from_mongoDB/<email>/<user_input>')
-def fetch_msg(email, user_input):
+@app.route('/fetch_msg_from_mongoDB/<user_input>')
+def fetch_msg(user_input):
     if "user" not in session:
         return redirect('/login')
     Msg_List = collection.find_one({"email":session["user"]["userinfo"]["email"]})
@@ -170,4 +170,3 @@ def clear():
 @app.route('/no_consent')
 def no_consent():
     return render_template("index2.html")
-
