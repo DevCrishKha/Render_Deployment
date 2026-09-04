@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>All Notes</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 40px 60px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .note-block {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 20px 40px;
+            margin-bottom: 28px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .note-block h2 {
+            margin-top: 0;
+        }
+
+        .note-meta {
+            color: #666;
+            font-size: 0.85em;
+            margin-bottom: 12px;
+        }
+
+        .top-links {
+            margin-bottom: 24px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="top-links">
+        <a href="{{ url_for('see_notes') }}">&larr; back to list</a>
+        &nbsp;|&nbsp;
+        <a href="{{ url_for('upload_files') }}">upload another</a>
+    </div>
+
+    <h1>All Notes</h1>
+
+    {% if notes %}
+    <!--
+      One "note" here is one whole MongoDB document (filename +
+      uploaded_at + the converted html). We loop through the Python
+      list "notes" that myFlask.py handed us, and for each one we
+      drop its stored HTML straight into the page (same "safe"
+      filter trick as the single-note page) - just repeated once
+      per note instead of once per page.
+    -->
+    {% for note in notes %}
+    <div class="note-block">
+        <h2>{{ note.filename }}</h2>
+        <div class="note-meta">Uploaded {{ note.uploaded_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        {{ note.html | safe }}
+    </div>
+    {% endfor %}
+    {% else %}
+    <p>No notes uploaded yet. <a href="{{ url_for('upload_files') }}">Upload one</a>.</p>
+    {% endif %}
+
+</body>
+
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Notes</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 700px;
+            margin: 40px auto;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        .note-content {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+
+    {% if notes is not none %}
+    <!-- LIST VIEW: /notes -->
+    <h2>Your Notes</h2>
+    {% if notes %}
+    <p><a href="{{ url_for('view_all_notes') }}">View all notes on one page</a></p>
+    <ul>
+        {% for n in notes %}
+        <li>
+            <a href="{{ url_for('view_note', note_id=n.id) }}">{{ n.filename }}</a>
+            &mdash; {{ n.uploaded_at.strftime('%Y-%m-%d %H:%M') }}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>No notes uploaded yet. <a href="{{ url_for('upload_files') }}">Upload one</a>.</p>
+    {% endif %}
+
+    {% else %}
+    <!-- SINGLE NOTE VIEW: /notes/<note_id> -->
+    <h2>{{ note.filename }}</h2>
+    <p><a href="{{ url_for('see_notes') }}">&larr; back to all notes</a></p>
+
+    <!--
+      THIS is the Jinja step you asked about: `note.html` is the
+      compiled HTML string we fetched from MongoDB in myFlask.py.
+      The "| safe" filter tells Jinja "render this as real HTML tags,
+      don't escape it into visible text". Without "| safe", the
+      browser would show literal "<h1>" text instead of a heading.
+    -->
+    <div class="note-content">
+        {{ note.html | safe }}
+    </div>
+    {% endif %}
+
+</body>
+
+</html>

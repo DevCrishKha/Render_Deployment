@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Upload Word Notes</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 500px;
+      margin: 40px auto;
+    }
+
+    #dialog-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      align-items: center;
+      justify-content: center;
+    }
+
+    #dialog-box {
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      max-width: 360px;
+      text-align: center;
+    }
+
+    #dialog-box button {
+      margin-top: 16px;
+      padding: 8px 16px;
+      cursor: pointer;
+    }
+
+    .success {
+      color: green;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>Upload Word File(s)</h2>
+
+  {% if success %}
+  <p class="success">{{ success }}</p>
+  {% endif %}
+
+  <form id="upload-form" method="POST" enctype="multipart/form-data">
+    <!-- "multiple" lets the user pick more than one .docx at once -->
+    <input type="file" name="word_files" accept=".docx,.doc" multiple required>
+    <br><br>
+    <button type="submit">Upload</button>
+  </form>
+
+  <!-- The pop-up dialog box itself. It's hidden by default. -->
+  <div id="dialog-overlay">
+    <div id="dialog-box">
+      <p id="dialog-message"></p>
+      <button onclick="closeDialog()">OK</button>
+    </div>
+  </div>
+
+  <script>
+    const MAX_TOTAL_BYTES = 30 * 1024 * 1024; // 30MB, same number as in myFlask.py
+
+    function showDialog(message) {
+      document.getElementById("dialog-message").textContent = message;
+      document.getElementById("dialog-overlay").style.display = "flex";
+    }
+
+    function closeDialog() {
+      document.getElementById("dialog-overlay").style.display = "none";
+    }
+
+    // ---- CLIENT-SIDE CHECK ----
+    // This catches the problem instantly, before anything is even
+    // sent over the network - like checking a sensor reading is in
+    // range before you bother transmitting it anywhere.
+    // IMPORTANT: this is just for a fast, friendly warning. The
+    // real, trustworthy check happens in myFlask.py on the server,
+    // because a user could otherwise bypass this JS check.
+    document.getElementById("upload-form").addEventListener("submit", function (e) {
+      const input = document.querySelector('input[name="word_files"]');
+      let total = 0;
+      for (const file of input.files) {
+        total += file.size;
+      }
+      if (total > MAX_TOTAL_BYTES) {
+        e.preventDefault(); // stop the form from submitting
+        const mb = (total / (1024 * 1024)).toFixed(2);
+        showDialog(`Total size is ${mb}MB, which is over the 30MB limit. Please choose smaller or fewer files.`);
+      }
+    });
+
+    // ---- SERVER-SIDE CHECK RESULT ----
+    // If Flask itself rejected the upload (the authoritative check),
+    // it passes an "error" message into this page - show it as the
+    // same pop-up dialog box.
+    {% if error %}
+    showDialog({{ error| tojson }});
+    {% endif %}
+  </script>
+
+</body>
+
+</html>

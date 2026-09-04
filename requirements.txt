@@ -1,9 +1,5 @@
 flask
-authlib
-google-generativeai
-markdown
-requests
-pymongo
-flask-Session
+mammoth
+python-docx
 gunicorn
-python-dotenv
+pymongo

@@ -1,172 +1,203 @@
-from flask import Flask, render_template, redirect, session, url_for, request
-from authlib.integrations.flask_client import OAuth
-import markdown
-from flask_session import Session
-import google.generativeai as genai
-import requests
-import pymongo
-from dotenv import load_dotenv
+"""
+myFlask.py
+
+WHAT'S NEW IN THIS VERSION:
+Previously we stored the raw .docx file itself in MongoDB (via
+GridFS). Now, instead, we CONVERT the Word file to HTML the moment
+it's uploaded, and only the resulting HTML text gets saved into
+MongoDB. The original .docx bytes are never kept anywhere.
+
+WHY THIS MATTERS FOR RENDER HOSTING:
+Render's filesystem is "ephemeral" - every time your app restarts or
+redeploys, anything you wrote to local disk is gone (imagine a
+microcontroller that wipes its flash on every reset - you wouldn't
+store your calibration data there, you'd send it to an external
+EEPROM instead). MongoDB is that external EEPROM here: it lives
+outside your Render instance, so it survives restarts/redeploys.
+
+HOW THE CONVERSION WORKS (the "mammoth" library):
+  raw .docx bytes  --[mammoth.convert_to_html()]-->  HTML string
+"mammoth" reads the Word file's internal structure (it's secretly a
+zipped folder of XML files) and maps Word's built-in styles to plain
+HTML tags:
+    Word "Heading 1"   -> <h1>...</h1>
+    Word "Heading 2"   -> <h2>...</h2>
+    a normal paragraph -> <p>...</p>
+    bold / italic text -> <strong>/<em>
+We do NOT use "python-docx" for this part - python-docx is great for
+reading/editing individual pieces of a Word file (paragraphs, runs,
+tables) as Python objects, but it has no built-in "give me HTML"
+function. mammoth is built specifically for the docx-to-HTML job.
+
+WHERE THE FILES "COME FROM" (answering your question directly):
+There's no folder to browse anymore - that's the point. Each
+converted note becomes one MongoDB document that looks like:
+
+    {
+      "_id": ObjectId("..."),
+      "filename": "physics_notes.docx",
+      "html": "<h1>Physics Notes</h1><p>...</p>",
+      "uploaded_at": <timestamp>,
+      "size_bytes": 20480
+    }
+
+To "read" a file now, you don't open a path on disk - you query
+MongoDB for that document and use its "html" field. That's exactly
+what the /notes/<note_id> route below does.
+------------------------------------------------------------------
+"""
+
 import os
+from datetime import datetime, timezone
 
-'''
-            Loading variables from .env file
-'''
-load_dotenv()   #loading the .env file from the same directory || load_dotenv(env_path) for .env in parent dir
-atlas_string = os.getenv('atlas_string')
-Gemini_key = os.getenv('gemini_api_key')
-client_ID = os.getenv('client_id')
-client_secret = os.getenv('client_secret')
-
-
-client = pymongo.MongoClient(atlas_string)
-# client = pymongo.MongoClient("mongodb://localhost:27017")
-db = client["Google_OAuth"]
-collection = db["Health_Guide_Chatbot_CHATS"]
-collection2 = db["Health_Guide_Chatbot_USERINFO"]
-
-def Gemini(prompt):
-    genai.configure(api_key=Gemini_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    response = model.generate_content(prompt)
-    return response.text
+from flask import Flask, render_template, request
+from pymongo import MongoClient
+from bson.objectid import ObjectId
+import mammoth
 
 app = Flask(__name__)
-app.config["SESSION_TYPE"] = "filesystem"
-app.config["SESSION_PERMANENT"] = True
-Session(app)
+app.secret_key = "change-this-to-something-random"  # needed for the dialog-box error message
 
-oauth = OAuth(app)
+# ------------------------------------------------------------------
+# 1) CONNECT TO MONGODB
+# ------------------------------------------------------------------
+# On Render, set MONGO_URI as an "Environment Variable" in your
+# service's dashboard (Settings -> Environment). Never hard-code your
+# real password into this file.
+MONGO_URI = os.getenv("Atlas_string1")
+DB_NAME = "Word-To-HTML-Notes"
 
-oauth.register(
-    "myApp",
-    client_id = client_ID,
-    client_secret = client_secret,
-    server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs ={
-        "scope": "profile email openid https://www.googleapis.com/auth/user.birthday.read https://www.googleapis.com/auth/user.gender.read"
-    }
-)
+client = MongoClient(MONGO_URI)
+db = client[DB_NAME]
 
+# One normal MongoDB collection to hold the converted notes.
+# (We dropped GridFS entirely - HTML text is small, so it fits
+# comfortably inside a single ordinary document, no chunking needed.)
+notes_collection = db["notes"]
 
-@app.route('/')
-def Index():
-    return render_template("index3.html")
-
-@app.route('/app', methods=['POST', 'GET'])
-def chat():
-    if "user" not in session:
-        return redirect('/')
-    
-    return render_template("index.html", messages=session.get("chats"), username=session["user"]["userinfo"]["name"], email=session["user"]["userinfo"]["email"])
-
-@app.route('/fetch_msg_from_mongoDB/<user_input>')
-def fetch_msg(user_input):
-    if "user" not in session:
-        return redirect('/login')
-    Msg_List = collection.find_one({"email":session["user"]["userinfo"]["email"]})
-    if Msg_List:
-        myList = Msg_List["Msg_list"] #If the document is there take the chat-list from there || If not then create it from start
-    else:
-        system_instruction = (
-                "You are a professional and helpful health assistant. "
-                "Your purpose is to provide general, medicinal information and lifestyle tips, and diagnose the user for some issue. "
-                "You **must** ask for extra details wherever required from the user before diagnosing them. "
-                "and that they should consult a professional for medical advice, and should not solely rely on your advice "
-                "Do not engage in conversations outside of health, wellness, or general information."
-            )
-
-        myList = [
-                {"role": "user", "parts": [{"text": system_instruction}]},
-
-                # The model's first visible message
-                {"role": "model", "parts": [{"text": "Hi there! I'm ready to help you with general health and wellness information. What's on your mind today?"}]}
-            ]
-    myList.append({"role":"user", "parts":[{"text":user_input}]})
-    Bot_response = Gemini(myList)
-    Bot_response_html = markdown.markdown(Bot_response)  # 🟢 CONVERT MARKDOWN TO HTML HERE 🟢
-    myList.append({"role":"model", "parts":[{"text":Bot_response_html}]})
-    collection.update_one(
-        {"email": session["user"]["userinfo"]["email"]},
-        {"$set": {"Msg_list": myList}},
-        upsert=True #If no matching document mongoDB creates one, if it exists mongoDB creates it.
-    )
-    session["chats"] = myList
-    return render_template("chat_section.html", messages=myList)
-    #create a partials/html file. Return it as render_template() to fetch. JS will insert adjacentHTML. And I am giving the Dict. with the render_template('partials', session=myList) so that JS just gives a fetch command and take the HTML and inserts it. Just like the portFolio site. 
+# ------------------------------------------------------------------
+# 2) THE SIZE LIMIT (unchanged - still checked on the ORIGINAL
+#    .docx bytes, before conversion)
+# ------------------------------------------------------------------
+MAX_TOTAL_BYTES = 30 * 1024 * 1024  # 30MB
 
 
-#This is from where the oauth will send the user to google-OAUTH2.0 and will send the params
-@app.route('/login')
-def Login():
-    if "user" in session:
-        return redirect('/app')
-    return oauth.myApp.authorize_redirect(redirect_uri=url_for("callback", _external=True))
+@app.route("/", methods=["GET", "POST"])
+def index():
+    return "Hello World !!"
 
-#This is where we'll receive the authorization-code from google and will be able to call the token using that
-#We do not have to do request.args() separately the oauth handels it automatically with flask😋 Hurray
-#Remember a GET request is automatically acepted by a flask route but not a POST request
-@app.route('/callback')
-def callback():
-    error = request.args.get("error")
-    if error:
-        # They denied one or more consents
-        return redirect('/no_consent')
-    
-    # THIS IS TO BLOCK THE USER IF THE USER DO NOT GIVE THE CONSENT
-    
-    # scopes = request.args.get("scope")
-    # if scopes:
-    #     scope_list = scopes.split()
-    #     if "https://www.googleapis.com/auth/user.gender.read" in scope_list and "https://www.googleapis.com/auth/user.gender.read":
-    #         pass
-    #     else:
-    #         return redirect('/no_consent')
-    # else:
-    #     return redirect('/no_consent')
 
-    token = oauth.myApp.authorize_access_token()
-    
-    #Now we've got the access_token of the user we can do something with it
-    access_token = token["access_token"]
-    response = requests.get(
-        "https://people.googleapis.com/v1/people/me?personFields=genders,birthdays",
-        headers={
-            "Authorization": f"Bearer {access_token}"
-        }
-    ).json()
-    token["personData"] = response
-    session["user"] = token
-    email = session["user"]["userinfo"]["email"]
-    doc = collection2.find_one({"email":email}) # Checking if this user loged In before!! If yes then delete the older document and then add a new one
+# ------------------------------------------------------------------
+# 3) LIST + VIEW NOTES
+# ------------------------------------------------------------------
+@app.route('/notes')
+def see_notes():
+    # Pull just the id/filename/date for every note - not the full
+    # html - so this list page loads fast.
+    docs = notes_collection.find({}, {"filename": 1, "uploaded_at": 1}).sort("uploaded_at", -1)
+    notes = [{"id": str(d["_id"]), "filename": d["filename"], "uploaded_at": d["uploaded_at"]} for d in docs]
+    return render_template("notes_output.html", notes=notes)
+
+
+@app.route('/notes/all')
+def view_all_notes():
+    # Unlike see_notes() above, here we DO need the full "html" field
+    # for every note, because we're putting all of them on one page.
+    # Still sorted so the newest upload shows first.
+    docs = notes_collection.find({}).sort("uploaded_at", -1)
+    notes = list(docs)  # pull everything into a normal Python list
+    return render_template("all_notes.html", notes=notes)
+
+
+@app.route('/notes/<note_id>')
+def view_note(note_id):
+    # This is the Jinja-templating step you asked about: we fetch the
+    # stored HTML string from MongoDB, then hand it to the template
+    # as a normal variable. Inside the template it's inserted with
+    # {{ note.html | safe }} - the "| safe" tells Jinja "this text IS
+    # HTML on purpose, don't escape the < and > characters."
+    doc = notes_collection.find_one({"_id": ObjectId(note_id)})
     if not doc:
-        collection2.insert_one({"email":email , f"{email}":token})
-    else:
-        collection2.delete_one({"email":email})
-        collection2.insert_one({"email":email , f"{email}":token})
-    Msg_List = collection.find_one({"email":email}) #deleting session 'chats' as we logout and adding as we log in
-    if Msg_List:
-        myList = Msg_List["Msg_list"]
-        session["chats"] = myList
-    return redirect('/app')
+        return "Note not found", 404
+    return render_template("notes_output.html", note=doc, notes=None)
 
-@app.route('/logout')
-def logout():
-    if "user" in session:
-        session.clear()  # This will clear the session 'user' and 'chats' else space in my filesystem will be filled
-        return redirect('/')
-    else:
-        return redirect('/')
 
-@app.route('/clear_chat')
-def clear():
-    if "user" not in session:
-        return redirect('/login')
+@app.route('/notes_plain/<note_id>')
+def notes_plain(note_id):
+    # The "plain" version: no page chrome, just the converted HTML
+    # exactly as mammoth produced it, served directly as a webpage.
+    doc = notes_collection.find_one({"_id": ObjectId(note_id)})
+    if not doc:
+        return "Note not found", 404
+    return doc["html"]
 
-    collection.delete_one({"email":session["user"]["userinfo"]["email"]})
-    if "chats" in session:
-        session.pop("chats")
-    return redirect('/app')
 
-@app.route('/no_consent')
-def no_consent():
-    return render_template("index2.html")
+# ------------------------------------------------------------------
+# 4) THE UPLOAD PAGE (now converts to HTML before storing)
+# ------------------------------------------------------------------
+@app.route('/upload', methods=['GET', 'POST'])
+def upload_files():
+    if request.method == 'GET':
+        return render_template("upload_notes.html", error=None)
+
+    uploaded_files = request.files.getlist("word_files")
+    uploaded_files = [f for f in uploaded_files if f and f.filename]
+
+    if not uploaded_files:
+        return render_template(
+            "upload_notes.html",
+            error="No file was selected. Please choose at least one .docx file."
+        )
+
+    # --- Step A: read every file once, add up total size ---
+    file_blobs = []
+    total_size = 0
+    for f in uploaded_files:
+        raw = f.read()
+        total_size += len(raw)
+        file_blobs.append((f.filename, raw))
+
+    # --- Step B: enforce the 30MB limit (checked BEFORE any
+    #     conversion or database work happens) ---
+    if total_size > MAX_TOTAL_BYTES:
+        size_in_mb = round(total_size / (1024 * 1024), 2)
+        return render_template(
+            "upload_notes.html",
+            error=f"Upload rejected: total size is {size_in_mb}MB, "
+                  f"which is over the 30MB limit."
+        )
+
+    # --- Step C: convert each file to HTML, then store the HTML ---
+    saved = []
+    conversion_warnings = []
+    for filename, raw in file_blobs:
+        # mammoth wants a file-like object, so we wrap the raw bytes
+        from io import BytesIO
+        result = mammoth.convert_to_html(BytesIO(raw))
+        html_output = result.value  # the actual <h1>...</h1><p>...</p> string
+
+        # mammoth also reports anything it couldn't convert cleanly
+        # (e.g. an unusual style) - worth surfacing, not fatal
+        if result.messages:
+            conversion_warnings.extend(str(m) for m in result.messages)
+
+        inserted = notes_collection.insert_one({
+            "filename": filename,
+            "html": html_output,
+            "uploaded_at": datetime.now(timezone.utc),
+            "size_bytes": len(raw),
+        })
+        saved.append(str(inserted.inserted_id))
+
+    success_msg = (
+        f"Converted and stored {len(saved)} file(s) "
+        f"({round(total_size / (1024*1024), 2)}MB total)."
+    )
+    if conversion_warnings:
+        success_msg += f" Note: {len(conversion_warnings)} formatting warning(s) during conversion."
+
+    return render_template("upload_notes.html", error=None, success=success_msg)
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
